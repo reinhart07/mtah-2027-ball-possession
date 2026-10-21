@@ -1,0 +1,9 @@
+data/
+cache/
+evaluation/results/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+*.csv
+.vscode/

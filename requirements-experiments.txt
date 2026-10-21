@@ -1,0 +1,3 @@
+-r requirements.txt
+# only for the optional gap-model experiments (gapmodel.py, benchmark_gap.py)
+scikit-learn==1.6.1
