@@ -1,4 +1,4 @@
-"""python -m mtah.run --data data --out evaluation/results/Rei_JR.csv [--gap-w 0.2]"""
+"""python -m mtah.run --data data --out evaluation/results/<team_name>.csv [--gap-w 0.2]"""
 import argparse
 import os
 from dataclasses import replace
@@ -16,6 +16,7 @@ def main():
     ap.add_argument("--data", default=os.environ.get("MTAH_DATA_DIR", "data"))
     ap.add_argument("--out", required=True)
     ap.add_argument("--fuse-broadcast", action="store_true", help="fill tactical ball gaps from the aligned broadcast ball")
+    ap.add_argument("--video-cache", default=None, help="directory written by mtah.video_fill (video-assisted ball positions)")
     ap.add_argument("--gap-mode", default="off", choices=["off", "viterbi", "cp", "mid"])
     ap.add_argument("--gap-w", type=float, default=0.03, help="weight for --gap-mode viterbi")
     a = ap.parse_args()
@@ -23,6 +24,11 @@ def main():
     t = os.path.join(a.data, "tactical")
     ball, P, team = load_tactical(f"{t}/BAR-ATH_tactical_atd.xml", f"{t}/BAR-ATH_tactical_atd.txt", cfg)
     print(f"[run] ball visible on {(~pd.isna(ball[:, 0])).mean():.1%} of all frames (docs: 56.9%)")
+    if a.video_cache:
+        from .video_ball import fuse_video_cache
+        before = (~pd.isna(ball[:, 0])).mean()
+        ball, nfill = fuse_video_cache(ball, a.video_cache)
+        print(f"[run] video-assisted ball: +{nfill} frames, visibility {before:.1%} -> {(~pd.isna(ball[:, 0])).mean():.1%}")
     if a.fuse_broadcast:
         from .sync_broadcast import fuse_from_files
         ball = fuse_from_files(a.data, ball, cfg)

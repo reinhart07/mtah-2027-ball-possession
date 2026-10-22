@@ -1,4 +1,6 @@
-# More Than A Hack 2027 - Phase 1: ball possession (Rei_JR)
+# More Than A Hack 2027 - Phase 1: ball possession (Rei JR)
+
+Repository: https://github.com/reinhart07/mtah-2027-ball-possession
 
 Frame-level possession labels (`H` / `A` / `D`) for the BAR-ATH match, produced **algorithmically** from the
 provided tactical tracking (ATD). No hand labelling, no private ground truth. Technical write-up: `TECH_DOC.md`.
@@ -26,8 +28,8 @@ The default path has no randomness: the same data and package versions give the 
 All parameters live in `mtah/config.py`.
 
 ## Experiments (not part of the default path, all off by default)
-`gapmodel.py`, `gapcp.py`, `tags.py`, `sync_broadcast.py` and the `sweep*`, `benchmark*`, `tagcheck`, `diagnose`,
-`dead_probe`, `tag_probe` scripts document what we tried and measured. See `TECH_DOC.md` for the results.
+`gapmodel.py`, `gapcp.py`, `tags.py`, `sync_broadcast.py`, `video_probe.py`, `video_ball.py`, `video_pilot.py`, `video_fill.py` and the `sweep*`, `benchmark*`,
+`bench_dead`, `tagcheck`, `diagnose`, `dead_probe`, `tag_probe` scripts document what we tried and measured. See `TECH_DOC.md` for the results.
 
 ## Data handling
 The match data is licensed for this competition only: it is not in this repository (`data/` is gitignored) and must

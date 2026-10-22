@@ -1,5 +1,6 @@
-# Technical document - Rei_JR
+# Technical document - Rei JR
 More Than A Hack 2027, Phase 1 (frame-level ball possession, BAR-ATH)
+Code repository: https://github.com/reinhart07/mtah-2027-ball-possession
 
 ## 1. Summary
 Labels come from a small, fully inspectable state model on the provided tactical tracking (ATD): per-frame
@@ -29,7 +30,7 @@ evidence accumulates, which also matches the rule that a loose ball stays with t
 ## 3. Assets used and dropped
 - **Used:** tactical ATD (players and ball), frame alignment (frame_id - 1), the graded-window boundaries.
 - **Tried and dropped (all measured, see section 5):** broadcast tracking (alignment to the tactical timeline),
-  Smart Tagging team tags, a learned player-only possession model. Homography and the videos were not needed.
+  Smart Tagging team tags, a learned player-only possession model, and video-assisted ball recovery (pretrained detector plus temporal linking). The tactical video and homography were used only in that experiment.
 
 ## 4. Possession rules implemented
 - Possession belongs to the last team in control; a loose or contested ball keeps its previous owner.
@@ -69,12 +70,14 @@ were taken from a plateau of 24 combinations (precision 0.8-0.93, recall 0.5-0.6
 - *Change-point / midpoint placement of hand-overs inside gaps:* -0.002 +- 0.008 and -0.006 +- 0.008.
 - *Smart Tagging team tags* as a possession signal: covers 73.8% of graded frames (69.7% of ball-less frames) but agrees
   with ball-based labels only 73% (70% with the public truth); adding them to the model changed AUC by < 0.01.
+- *Video-assisted ball recovery* (YOLOv8x detections on the tactical video, projected to the pitch with the homography and linked between the tracker's last ball before a gap and first ball after it, with skip edges for missed detections): on masked windows with known truth it worked (12 s windows: label agreement 0.692 -> 0.805, +0.112 +- 0.048 SE; 30 s windows: 0.772 -> 0.922, +0.150 +- 0.051 SE; 83-90% of recovered positions within 3 m). On the 131 real gaps, however, only 11% of ball-less frames were recovered (graded ball visibility 59.3% -> 63.6%), because the detector fails where the tracker fails. Whole-match effect: 329 vs 320 possessions, public-window spellF1 0.489 vs 0.518 (within noise), macroF1 unchanged. Not adopted: the gain is small and uncertain, and GPU inference (about 40 min) is hard to reproduce byte for byte.
 - *Broadcast tracking:* aligned by ball trajectory; only 13% of chunks aligned, graded ball visibility 59.3% -> 59.9%.
 
 ## 6. Limitations
 - Gaps are handled by holding the state; hand-overs inside long gaps are placed at the gap end.
 - Dead-ball recall is 0.57: starts of stoppages (ball still in flight) and calm-but-not-dead phases are missed or
   confused. Dead-ball thresholds were set from 4 public stretches and a plateau argument, not from many examples.
+- Dead-ball calls without a ball are noisy. About 40% of graded frames have no ball; hiding the ball in windows with the real gap-length distribution and comparing with our own un-masked output, 27% of alive frames become dead and 18% of dead frames become alive. Other thresholds only trade one error for the other (calm threshold 0.8 m/s: 17% and 27%, public dead-ball recall 0.39), so the chosen setting sits on the efficient frontier of this rule family.
 - "Controlled possession" is read from the geometry and 17 public possessions; short possessions (1-3 s) are the
   hardest to match under IoU.
 - No restart-team modelling; the full-match score is unknown.
@@ -82,7 +85,7 @@ were taken from a plateau of 24 combinations (precision 0.8-0.93, recall 0.5-0.6
 ## 7. Reproduction
 Python 3.13, numpy 2.1.3, pandas 2.2.3, scipy 1.16.3, kloppy 3.19.1 (pinned in requirements.txt; scikit-learn 1.6.1 only for the optional experiments, requirements-experiments.txt).
 ```
-git clone <this repository> && cd <repo>
+git clone https://github.com/reinhart07/mtah-2027-ball-possession.git && cd mtah-2027-ball-possession
 pip install -r requirements.txt
 # unpack the organisers' data into ./data (original file names)
 python -m mtah.run --data data --out Rei_JR.csv
