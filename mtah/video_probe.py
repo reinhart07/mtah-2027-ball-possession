@@ -25,13 +25,14 @@ def project(H, xn, yn):
     return v[0] / v[2], v[1] / v[2]
 
 
-def sample_frames(ball, hvalid, cfg: Config, n, seed=0, pre=75):
+def sample_frames(ball, hvalid, cfg: Config, n, seed=0, pre=75, min_frame=0):
     """(random_frames, pre_gap_frames): graded frames with a tracker ball and a valid homography."""
     rng = np.random.default_rng(seed)
     ok = ~np.isnan(ball[:, 0]) & hvalid
     graded = np.zeros(len(ball), bool)
     for a, b in cfg.blocks:
         graded[a:b + 1] = True
+    ok = ok & (np.arange(len(ball)) >= min_frame)
     pool = np.where(ok & graded)[0]
     pre_pool = []
     for a, b in cfg.blocks:
@@ -59,6 +60,8 @@ def main():
     ap.add_argument("--radius", type=float, default=20.0, help="pixels")
     ap.add_argument("--weights", default="yolov8x.pt")
     ap.add_argument("--imgsz", type=int, default=1920)
+    ap.add_argument("--tiled", action="store_true")
+    ap.add_argument("--min-frame", type=int, default=0, help="only sample frames from here on (held-out period)")
     a = ap.parse_args()
     import cv2
     from ultralytics import YOLO
@@ -71,7 +74,7 @@ def main():
     Hm[hom["frame"].to_numpy()] = hom[HCOLS].to_numpy()
     hvalid = np.zeros(cfg.n_frames, bool)
     hvalid[hom["frame"].to_numpy()] = hom["valid"].to_numpy() == 1
-    rnd, pre = sample_frames(ball, hvalid, cfg, a.n)
+    rnd, pre = sample_frames(ball, hvalid, cfg, a.n, min_frame=a.min_frame)
     cap = cv2.VideoCapture(a.video)
     print(f"[probe] video frames: {int(cap.get(cv2.CAP_PROP_FRAME_COUNT))} (expected {cfg.n_frames}); "
           f"frame size {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}")
@@ -85,9 +88,13 @@ def main():
             if not ok:
                 continue
             tx, ty = project(Hm[f], ball[f, 0] / cfg.pitch_l, ball[f, 1] / cfg.pitch_w)
-            r = model.predict(img, imgsz=a.imgsz, conf=0.03, classes=[32], verbose=False)[0]
-            xy = r.boxes.xywh.cpu().numpy()[:, :2] if len(r.boxes) else np.zeros((0, 2))
-            cf = r.boxes.conf.cpu().numpy() if len(r.boxes) else np.zeros(0)
+            if a.tiled:
+                from .video_ball import detect_tiled
+                xy, cf = detect_tiled(model, [img])[0]
+            else:
+                r = model.predict(img, imgsz=a.imgsz, conf=0.03, classes=[32], verbose=False)[0]
+                xy = r.boxes.xywh.cpu().numpy()[:, :2] if len(r.boxes) else np.zeros((0, 2))
+                cf = r.boxes.conf.cpu().numpy() if len(r.boxes) else np.zeros(0)
             h, t1, k = score_frame(xy, cf, (tx, ty), a.radius)
             hit += h; top1 += t1; nd += k; tot += 1
         if tot:

@@ -28,7 +28,7 @@ The default path has no randomness: the same data and package versions give the 
 All parameters live in `mtah/config.py`.
 
 ## Experiments (not part of the default path, all off by default)
-`gapmodel.py`, `gapcp.py`, `tags.py`, `sync_broadcast.py`, `video_probe.py`, `video_ball.py`, `video_pilot.py`, `video_fill.py` and the `sweep*`, `benchmark*`,
+`gapmodel.py`, `gapcp.py`, `tags.py`, `sync_broadcast.py`, `video_probe.py`, `video_ball.py`, `video_pilot.py`, `video_fill.py`, `video_gt_check.py`, `ft_dataset.py`, `ft_train.py` and the `sweep*`, `benchmark*`,
 `bench_dead`, `tagcheck`, `diagnose`, `dead_probe`, `tag_probe` scripts document what we tried and measured. See `TECH_DOC.md` for the results.
 
 ## Data handling

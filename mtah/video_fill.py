@@ -18,7 +18,7 @@ import pandas as pd
 from .ball import clean_ball, runs
 from .config import Config
 from .io import load_tactical
-from .video_ball import detect_stretch, fill_between, link, to_pitch
+from .video_ball import detect_stretch, fill_between, inside_pitch, link, to_pitch
 
 HCOLS = ["h00", "h01", "h02", "h10", "h11", "h12", "h20", "h21", "h22"]
 
@@ -42,6 +42,8 @@ def main():
     ap.add_argument("--step", type=int, default=5)
     ap.add_argument("--min-len", type=int, default=20)
     ap.add_argument("--weights", default="yolov8x.pt")
+    ap.add_argument("--w-conf", type=float, default=2.0, help="linker weight on detector confidence")
+    ap.add_argument("--tiled", action="store_true", help="tiled inference for a fine-tuned single-class ball detector")
     a = ap.parse_args()
     import cv2
     import torch
@@ -70,14 +72,18 @@ def main():
         f0, f1 = s - 1, e
         p0, p1 = b[f0].copy(), b[f1].copy()
         samples = []
-        for f, xy, cf in detect_stretch(cap, model, s, e - 1, a.step, half=half):
+        for f, xy, cf in detect_stretch(cap, model, s, e - 1, a.step, half=half, tiled=a.tiled):
             if len(cf) == 0 or np.isnan(Hm[f, 0]):
                 continue
             pos = to_pitch(Hm[f], xy, cfg)
+            if a.tiled:
+                keep = inside_pitch(pos, cfg); pos, cf = pos[keep], cf[keep]
+                if len(cf) == 0:
+                    continue
             d = np.hypot(P[f, :, 0][None, :] - pos[:, 0:1], P[f, :, 1][None, :] - pos[:, 1:2])
             dm = np.nanmin(np.where(np.isnan(d), 99.0, d), axis=1)
             samples.append((f, pos, cf, dm))
-        path = link(samples, f0, p0, f1, p1, cfg.fps)
+        path = link(samples, f0, p0, f1, p1, cfg.fps, w_conf=a.w_conf)
         tmp = np.full((f1 - f0 + 1, 2), np.nan)
         tmp = fill_between(tmp, [(f - f0, p) for f, p in path], 0, p0, f1 - f0, p1)
         np.savez_compressed(os.path.join(a.out, f"gap_{s}_{e}.npz"), frames=np.arange(s, e), xy=tmp[1:f1 - f0])

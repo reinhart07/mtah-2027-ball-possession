@@ -21,7 +21,50 @@ def to_pitch(Hrow, xy_px, cfg: Config):
     return np.c_[pts[:, 0] / pts[:, 2] * cfg.pitch_l, pts[:, 1] / pts[:, 2] * cfg.pitch_w]
 
 
-def detect_stretch(cap, model, a, b, step, imgsz=1920, conf=0.03, half=True, batch=8):
+def tile_starts(length, tile, overlap):
+    stride = tile - overlap
+    starts = list(range(0, max(length - tile, 0) + 1, stride))
+    if starts[-1] + tile < length:
+        starts.append(length - tile)
+    return starts
+
+
+def _merge(dets, radius):
+    """greedy distance-NMS over (x, y, conf) tuples."""
+    keep = []
+    for x, y, c in sorted(dets, key=lambda d: -d[2]):
+        if all(np.hypot(x - kx, y - ky) > radius for kx, ky, _ in keep):
+            keep.append((x, y, c))
+    if not keep:
+        return np.zeros((0, 2)), np.zeros(0)
+    k = np.array(keep)
+    return k[:, :2], k[:, 2]
+
+
+def detect_tiled(model, imgs, tile=640, overlap=128, conf=0.03, half=True, merge_px=8):
+    """single-class detector run on overlapping native-resolution tiles (the ball stays ~10 px, no downscaling)."""
+    tiles, meta = [], []
+    for fi, img in enumerate(imgs):
+        H, W = img.shape[:2]
+        for y0 in tile_starts(H, tile, overlap):
+            for x0 in tile_starts(W, tile, overlap):
+                tiles.append(img[y0:y0 + tile, x0:x0 + tile]); meta.append((fi, x0, y0))
+    res = model.predict(tiles, imgsz=tile, conf=conf, verbose=False, half=half)
+    per = [[] for _ in imgs]
+    for (fi, x0, y0), r in zip(meta, res):
+        if len(r.boxes):
+            xy = r.boxes.xywh.cpu().numpy()[:, :2]
+            cf = r.boxes.conf.cpu().numpy()
+            per[fi] += [(float(p[0] + x0), float(p[1] + y0), float(c)) for p, c in zip(xy, cf)]
+    return [_merge(d, merge_px) for d in per]
+
+
+def inside_pitch(pos, cfg: Config, margin=5.0):
+    return ((pos[:, 0] >= -margin) & (pos[:, 0] <= cfg.pitch_l + margin) &
+            (pos[:, 1] >= -margin) & (pos[:, 1] <= cfg.pitch_w + margin))
+
+
+def detect_stretch(cap, model, a, b, step, imgsz=1920, conf=0.03, half=True, batch=8, tiled=False):
     """candidates (pixels, confidences) every `step` frames in [a, b]; sequential read, no random seeks."""
     import cv2
     logging.getLogger("ultralytics").setLevel(logging.ERROR)      # the "half is deprecated" warning repeats per call
@@ -31,11 +74,15 @@ def detect_stretch(cap, model, a, b, step, imgsz=1920, conf=0.03, half=True, bat
     def flush():
         if not imgs:
             return
-        res = model.predict(imgs, imgsz=imgsz, conf=conf, classes=[32], verbose=False, half=half)
-        for f, r in zip(frames, res):
-            xy = r.boxes.xywh.cpu().numpy()[:, :2] if len(r.boxes) else np.zeros((0, 2))
-            cf = r.boxes.conf.cpu().numpy() if len(r.boxes) else np.zeros(0)
-            out.append((f, xy, cf))
+        if tiled:
+            for f, (xy, cf) in zip(frames, detect_tiled(model, imgs, conf=conf, half=half)):
+                out.append((f, xy, cf))
+        else:
+            res = model.predict(imgs, imgsz=imgsz, conf=conf, classes=[32], verbose=False, half=half)
+            for f, r in zip(frames, res):
+                xy = r.boxes.xywh.cpu().numpy()[:, :2] if len(r.boxes) else np.zeros((0, 2))
+                cf = r.boxes.conf.cpu().numpy() if len(r.boxes) else np.zeros(0)
+                out.append((f, xy, cf))
         frames.clear(); imgs.clear()
 
     for f in range(a, b + 1):
